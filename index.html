@@ -6,6 +6,7 @@
 <title>FUMBLE WALL</title>
 <style>
   :root{ --ink:#000; --paper:#fff; --hot:#ff3b00; --acid:#d7ff00; --sky:#00b3ff; }
+  body.dark{ --ink:#fff; --paper:#000; }
   *{ box-sizing:border-box; margin:0; padding:0; }
   body{ font-family:"Courier New",monospace; background:var(--paper); color:var(--ink);
         line-height:1.3; padding:16px; max-width:760px; margin:0 auto; }
@@ -38,9 +39,37 @@
   .empty{ text-align:center; font-weight:bold; text-transform:uppercase; padding:30px; }
   .count{ font-weight:bold; text-transform:uppercase; margin-bottom:10px; }
   .err{ border:4px solid var(--hot); background:#ffe9e2; padding:14px; margin-bottom:18px; font-weight:bold; }
+  /* dark-mode controls */
+  .controls{ position:fixed; top:14px; right:14px; z-index:10; display:flex; align-items:center; gap:10px; }
+  #darkImg{ width:54px; height:54px; object-fit:cover; border:3px solid var(--ink); cursor:pointer;
+            box-shadow:4px 4px 0 var(--ink); display:block; }
+  #darkImg:active{ transform:translate(2px,2px); }
+  #toLight{ display:none; width:auto; padding:8px 12px; font-size:12px; background:var(--acid); color:#000;
+            border:3px solid var(--ink); box-shadow:4px 4px 0 var(--ink); }
+  body.dark #toLight{ display:block; }
+  #kaala{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:20;
+          background:var(--hot); color:#fff; border:4px solid #fff; padding:14px 20px; font-weight:bold;
+          text-transform:uppercase; box-shadow:6px 6px 0 #fff; opacity:0; pointer-events:none;
+          transition:opacity .2s; }
+  #kaala.show{ opacity:1; }
+  /* dark mode looks: black panels, neon borders/titles instead of neon fills */
+  body.dark header{ background:#000; border-color:var(--acid); }
+  body.dark header h1{ color:var(--acid); }
+  body.dark .box{ background:#000; }
+  body.dark .card{ background:#000; }
+  body.dark .card:nth-child(3n){ background:#000; border-color:var(--acid); }
+  body.dark .card:nth-child(3n+1){ background:#000; border-color:var(--sky); }
+  body.dark .card .who{ color:var(--acid); }
+  body.dark .btn-rec{ background:#000; color:var(--sky); border-color:var(--sky); }
+  body.dark .err{ background:#1a0000; color:var(--hot); border-color:var(--hot); }
 </style>
 </head>
 <body>
+<div class="controls">
+  <button id="toLight">☀ White mode</button>
+  <img id="darkImg" src="vansh-kaalu.jpeg" alt="dark mode" title="dark mode">
+</div>
+<div id="kaala">मैं काला हूँ 🖤 wapas nahi jaunga</div>
 <header>
   <h1>Fumble Wall</h1>
   <p>★ Bharose Wale ★ nobody forgets · everybody adds</p>
@@ -70,6 +99,16 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 const BUCKET = 'evidence';
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let mediaRec, chunks=[], recBlob=null;
+
+// dark mode: photo turns it ON; in dark it just taunts. Separate toggle turns it OFF.
+const kaala=document.getElementById('kaala');
+let kaalaTimer;
+document.getElementById('darkImg').onclick=()=>{
+  if(!document.body.classList.contains('dark')){ document.body.classList.add('dark'); return; }
+  kaala.classList.add('show'); clearTimeout(kaalaTimer);
+  kaalaTimer=setTimeout(()=>kaala.classList.remove('show'),2000);
+};
+document.getElementById('toLight').onclick=()=>document.body.classList.remove('dark');
 
 function esc(s){return (s||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
 function fmt(ts){return new Date(ts).toLocaleString();}
