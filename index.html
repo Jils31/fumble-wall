@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FUMBLE WALL</title>
+<style>
+  :root{ --ink:#000; --paper:#fff; --hot:#ff3b00; --acid:#d7ff00; --sky:#00b3ff; }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{ font-family:"Courier New",monospace; background:var(--paper); color:var(--ink);
+        line-height:1.3; padding:16px; max-width:760px; margin:0 auto; }
+  header{ border:5px solid var(--ink); padding:18px; margin-bottom:18px; background:var(--acid);
+          box-shadow:10px 10px 0 var(--ink); }
+  header h1{ font-size:clamp(34px,9vw,64px); letter-spacing:-2px; text-transform:uppercase; }
+  header p{ font-weight:bold; margin-top:6px; text-transform:uppercase; font-size:13px; }
+  .box{ border:4px solid var(--ink); padding:14px; margin-bottom:18px; background:var(--paper);
+        box-shadow:8px 8px 0 var(--ink); }
+  label{ display:block; font-weight:bold; text-transform:uppercase; font-size:12px; margin:10px 0 4px; }
+  input,textarea,button,select{ font-family:inherit; font-size:15px; width:100%; padding:10px;
+        border:3px solid var(--ink); background:var(--paper); }
+  textarea{ resize:vertical; min-height:80px; }
+  button{ cursor:pointer; font-weight:bold; text-transform:uppercase; }
+  button:active{ transform:translate(2px,2px); }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .row>*{ flex:1; min-width:120px; }
+  .btn-main{ background:var(--hot); color:var(--paper); margin-top:14px; box-shadow:5px 5px 0 var(--ink); }
+  .btn-main:disabled{ opacity:.5; cursor:wait; }
+  .btn-rec{ background:var(--sky); }
+  .btn-rec.on{ background:var(--hot); color:#fff; }
+  .hint{ font-size:11px; font-weight:bold; opacity:.7; margin-top:4px; }
+  .card{ border:4px solid var(--ink); padding:14px; margin-bottom:16px; box-shadow:6px 6px 0 var(--ink); }
+  .card:nth-child(3n){ background:var(--acid); }
+  .card:nth-child(3n+1){ background:var(--sky); }
+  .card .who{ font-size:22px; font-weight:bold; text-transform:uppercase; }
+  .card .when{ font-size:11px; font-weight:bold; opacity:.7; }
+  .card .what{ margin:8px 0; white-space:pre-wrap; word-break:break-word; }
+  .card audio,.card video,.card img{ width:100%; border:3px solid var(--ink); margin-top:8px; display:block; }
+  .empty{ text-align:center; font-weight:bold; text-transform:uppercase; padding:30px; }
+  .count{ font-weight:bold; text-transform:uppercase; margin-bottom:10px; }
+  .err{ border:4px solid var(--hot); background:#ffe9e2; padding:14px; margin-bottom:18px; font-weight:bold; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fumble Wall</h1>
+  <p>★ Bharose Wale ★ nobody forgets · everybody adds</p>
+</header>
+
+<div class="box">
+  <label>Who fumbled?</label>
+  <input id="who" placeholder="naam batao">
+  <label>What did they do?</label>
+  <textarea id="what" placeholder="spill the fumble..."></textarea>
+  <label>Attach evidence (voice / video / image / file)</label>
+  <div class="row">
+    <input type="file" id="file" accept="audio/*,video/*,image/*">
+    <button class="btn-rec" id="rec">● Rec voice</button>
+  </div>
+  <div class="hint" id="recHint"></div>
+  <button class="btn-main" id="add">Add fumble ↵</button>
+</div>
+
+<div class="count" id="count"></div>
+<div id="wall"></div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+
+const BUCKET = 'evidence';
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let mediaRec, chunks=[], recBlob=null;
+
+function esc(s){return (s||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
+function fmt(ts){return new Date(ts).toLocaleString();}
+function fail(msg){document.body.insertAdjacentHTML('afterbegin',
+  `<div class="err">⚠ ${esc(msg)} — check your Supabase URL/key & that the table + bucket exist (setup steps at top of the .js comments).</div>`);}
+
+async function render(){
+  const { data, error } = await sb.from('fumbles').select('*').order('created_at',{ascending:false});
+  if(error){fail(error.message);return;}
+  document.getElementById('count').textContent=data.length+' fumble'+(data.length!==1?'s':'')+' on record';
+  const wall=document.getElementById('wall');
+  if(!data.length){wall.innerHTML='<div class="empty">No fumbles yet. Suspiciously clean.</div>';return;}
+  wall.innerHTML='';
+  for(const it of data){
+    let media='';
+    if(it.media_path){
+      const url=sb.storage.from(BUCKET).getPublicUrl(it.media_path).data.publicUrl;
+      const t=it.media_type||'';
+      if(t.startsWith('audio'))media=`<audio controls src="${url}"></audio>`;
+      else if(t.startsWith('video'))media=`<video controls src="${url}"></video>`;
+      else if(t.startsWith('image'))media=`<img src="${url}">`;
+      else media=`<a href="${url}" target="_blank" style="font-weight:bold">⬇ download evidence</a>`;
+    }
+    const c=document.createElement('div');c.className='card';
+    c.innerHTML=`<div class="who">${esc(it.who)}</div>
+      <div class="when">${fmt(it.created_at)}</div>
+      <div class="what">${esc(it.what)}</div>${media}`;
+    wall.appendChild(c);
+  }
+}
+
+// voice recording
+document.getElementById('rec').onclick=async function(){
+  if(mediaRec&&mediaRec.state==='recording'){mediaRec.stop();return;}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaRec=new MediaRecorder(stream);chunks=[];
+    mediaRec.ondataavailable=e=>chunks.push(e.data);
+    mediaRec.onstop=()=>{
+      recBlob=new Blob(chunks,{type:mediaRec.mimeType||'audio/webm'});
+      stream.getTracks().forEach(t=>t.stop());
+      this.classList.remove('on');this.textContent='● Rec voice';
+      document.getElementById('recHint').textContent='✓ voice note ready ('+Math.round(recBlob.size/1024)+' KB)';
+    };
+    mediaRec.start();this.classList.add('on');this.textContent='■ Stop';
+    document.getElementById('recHint').textContent='recording...';
+  }catch(e){document.getElementById('recHint').textContent='mic blocked: '+e.message;}
+};
+
+// add
+document.getElementById('add').onclick=async function(){
+  const who=document.getElementById('who').value.trim();
+  const what=document.getElementById('what').value.trim();
+  const f=document.getElementById('file').files[0];
+  if(!who||(!what&&!f&&!recBlob)){alert('Need a name and at least a fumble or evidence.');return;}
+  this.disabled=true;this.textContent='Saving...';
+  try{
+    const blob=f||recBlob||null;
+    let media_path=null, media_type=null;
+    if(blob){
+      const ext=(blob.name&&blob.name.includes('.'))?blob.name.split('.').pop():((blob.type.split('/')[1]||'bin').split(';')[0]);
+      media_path=`${Date.now()}-${Math.floor(performance.now())}.${ext}`;
+      media_type=blob.type;
+      const up=await sb.storage.from(BUCKET).upload(media_path,blob,{contentType:blob.type});
+      if(up.error)throw up.error;
+    }
+    const ins=await sb.from('fumbles').insert({who,what,media_path,media_type});
+    if(ins.error)throw ins.error;
+    document.getElementById('who').value='';document.getElementById('what').value='';
+    document.getElementById('file').value='';recBlob=null;document.getElementById('recHint').textContent='';
+    await render();
+  }catch(e){fail(e.message);}
+  this.disabled=false;this.textContent='Add fumble ↵';
+};
+
+render();
+</script>
+</body>
+</html>
